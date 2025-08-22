@@ -34,7 +34,8 @@ public class UserService {
     public Mono<User> create(UserCreateRequest user) {
         User entity = User.toEntity(user);
         entity.setPassword(passwordEncoder.encode(entity.getPassword()));
-        return userRepository.save(entity);
+        return userRepository.save(entity)
+                .doOnNext(result -> log.info("사용자({}) 생성 완료.", result.getName()));
     }
 
     /**
@@ -50,7 +51,8 @@ public class UserService {
                                 ErrorMessage.NOT_FOUND_USER,
                                 String.format("사용자(%d)를 찾지 못했습니다", id)
                         ))
-                );
+                )
+                .doOnNext(user -> log.info("사용자({}) 조회 완료", user.getId()));
     }
 
     /**
@@ -59,7 +61,7 @@ public class UserService {
     @Transactional(readOnly = true)
     public Flux<User> readAll() {
         return userRepository.findAll()
-                .doOnComplete(() -> log.debug("사용자 조회 완료"));
+                .doOnComplete(() -> log.info("모든 사용자 조회 완료."));
     }
 
     /**
@@ -68,11 +70,12 @@ public class UserService {
     @Transactional(readOnly = true)
     public Mono<User> getUserByEmail(String email) {
         return userRepository.findByEmail(email).switchIfEmpty(
-                Mono.error(new CustomException(
-                        ErrorMessage.NOT_FOUND_USER,
-                        String.format("이메일(%s)를 사용하는 사용자를 찾지 못했습니다", email)
-                ))
-        );
+                        Mono.error(new CustomException(
+                                ErrorMessage.NOT_FOUND_USER,
+                                String.format("이메일(%s)를 사용하는 사용자를 찾지 못했습니다", email)
+                        ))
+                )
+                .doOnNext(user -> log.info("이메일로 사용자({}) 조회 완료.", user.getEmail()));
     }
 
     /*
@@ -107,7 +110,8 @@ public class UserService {
                                     ErrorMessage.INTERNAL_SERVER_ERROR,
                                     "사용자 수정 중 여러 행이 수정되었습니다.")
                             ));
-                });
+                })
+                .doOnNext(l -> log.info("{}행 업데이트 완료.", l));
     }
 
     /*
@@ -125,7 +129,8 @@ public class UserService {
                     user.setName(request.name() == null ? "홍길동" : request.name());
                     user.setEmail(request.email() == null ? "example@example.com" : request.email());
                     return userRepository.save(user);
-                });
+                })
+                .doOnNext(user -> log.info("사용자({}) 레포지토리를 사용해 수정 완료.", user.getId()));
     }
 
     /**
@@ -138,7 +143,8 @@ public class UserService {
                         ErrorMessage.NOT_FOUND_USER,
                         String.format("사용자(%d)를 찾지 못했습니다", id)
                 )))
-                .flatMap(userRepository::delete);
+                .flatMap(userRepository::delete)
+                .doOnSuccess(v -> log.info("사용자({}) 레포지토리로 삭제 완료.", id));
     }
 
     /*
@@ -149,16 +155,18 @@ public class UserService {
     @Transactional
     public Mono<Long> deleteUsingTemplate(Long id) {
         return template.delete(
-                Query.query(Criteria.where("id").is(String.valueOf(id))),
-                User.class
-        ).flatMap(count -> {
-            if (count == 0) {
-                return Mono.error(new CustomException(
-                        ErrorMessage.NOT_FOUND_USER,
-                        String.format("사용자(%d)를 찾지 못했습니다", id)
-                ));
-            }
-            return Mono.just(count);
-        });
+                        Query.query(Criteria.where("id").is(String.valueOf(id))),
+                        User.class
+                )
+                .flatMap(count -> {
+                    if (count == 0) {
+                        return Mono.error(new CustomException(
+                                ErrorMessage.NOT_FOUND_USER,
+                                String.format("사용자(%d)를 찾지 못했습니다", id)
+                        ));
+                    }
+                    return Mono.just(count);
+                })
+                .doOnNext(l -> log.info("사용자({}) 템플릿으로 삭제 완료.", id));
     }
 }
